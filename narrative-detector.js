@@ -8,12 +8,21 @@
 
 const https = require('https');
 const http = require('http');
+const fs = require('fs');
 
 // Helper to fetch JSON
-function fetchJSON(url) {
+function fetchJSON(url, headers = {}) {
   return new Promise((resolve, reject) => {
     const client = url.startsWith('https') ? https : http;
-    client.get(url, (res) => {
+    
+    const options = {
+      headers: {
+        'User-Agent': 'SolanaNarrativeDetector/1.0',
+        ...headers
+      }
+    };
+    
+    client.get(url, options, (res) => {
       let data = '';
       res.on('data', chunk => data += chunk);
       res.on('end', () => {
@@ -32,12 +41,50 @@ function fetchJSON(url) {
  */
 async function getTrendingRepos() {
   try {
-    const data = await fetchJSON('https://api.github.com/search/repositories?q=solana+created:>2025-12-01&sort=stars&order=desc&per_page=10');
+    const data = await fetchJSON('https://api.github.com/search/repositories?q=solana+created:>2025-12-01&sort=stars&order=desc&per_page=15');
     return (data.items || []).map(repo => ({
       name: repo.full_name,
       stars: repo.stargazers_count,
       description: repo.description,
-      language: repo.language
+      language: repo.language,
+      url: repo.html_url
+    }));
+  } catch (e) {
+    console.log('GitHub API error:', e.message);
+    return [];
+  }
+}
+
+/**
+ * Get Reddit posts about Solana
+ */
+async function getRedditSignals() {
+  try {
+    // Using Reddit's public JSON API (no auth needed for basic)
+    const data = await fetchJSON('https://www.reddit.com/r/solana/new.json?limit=20');
+    const posts = (data.data?.children || []).map(post => ({
+      title: post.data.title,
+      score: post.data.score,
+      comments: post.data.num_comments,
+      created: post.data.created_utc
+    }));
+    return posts.slice(0, 10).map(p => `${p.title} (${p.score} votes)`);
+  } catch (e) {
+    return [];
+  }
+}
+
+/**
+ * Get CryptoPanic news about Solana
+ */
+async function getNewsSignals() {
+  try {
+    // Using CryptoCompare news API (free tier)
+    const data = await fetchJSON('https://min-api.cryptocompare.com/data/v2/news/?categories=SOLANA&excludeCategories=Sponsored&limit=20');
+    return (data.Data || []).slice(0, 10).map(news => ({
+      title: news.title,
+      source: news.source_info?.name || news.source,
+      url: news.url
     }));
   } catch (e) {
     return [];
@@ -45,38 +92,101 @@ async function getTrendingRepos() {
 }
 
 /**
- * Get recent Solana transactions data (mock for demo)
+ * Get CoinGecko trending data
  */
-async function getSolanaActivity() {
-  // In production, this would query Helius RPC or similar
-  return {
-    programs: ['PumpFun', 'Jupiter', 'Raydium', 'Metaplex', 'Magic Eden'],
-    trending: ['Meme coins', 'DeFi', 'NFTs', 'AI Agents']
-  };
+async function getTrendingCoins() {
+  try {
+    const data = await fetchJSON('https://api.coingecko.com/api/v3/search/trending');
+    return (data.coins || []).slice(0, 10).map(coin => ({
+      name: coin.item.name,
+      symbol: coin.item.symbol,
+      price_btc: coin.item.price_btc,
+      market_cap_rank: coin.item.market_cap_rank
+    }));
+  } catch (e) {
+    return [];
+  }
 }
 
 /**
- * Get ecosystem signals from various sources
+ * Get DeFiLlama TVL data for Solana
+ */
+async function getDeFiTVL() {
+  try {
+    const data = await fetchJSON('https://api.llama.fi/protocols');
+    const solanaProtocols = (data || [])
+      .filter(p => p.chain === 'Solana')
+      .sort((a, b) => b.tvl - a.tvl)
+      .slice(0, 10)
+      .map(p => `${p.name}: $${Math.round(p.tvl).toLocaleString()} TVL`);
+    return solanaProtocols;
+  } catch (e) {
+    return [];
+  }
+}
+
+/**
+ * Get all ecosystem signals
  */
 async function getEcosystemSignals() {
+  console.log('📡 Fetching signals from multiple sources...\n');
+  
   const signals = [];
   
-  // GitHub trending
+  // GitHub
+  console.log('  🔹 GitHub trending repos...');
   const repos = await getTrendingRepos();
   if (repos.length > 0) {
     signals.push({
       source: 'GitHub',
       type: 'Developer Activity',
-      data: repos.slice(0, 5).map(r => `${r.name}: ${r.stars} stars - ${r.language}`)
+      data: repos.slice(0, 5).map(r => `${r.name}: ${r.stars} ⭐ (${r.language || 'N/A'})`)
     });
   }
   
-  // On-chain activity (simulated)
-  signals.push({
-    source: 'On-chain',
-    type: 'Activity',
-    data: ['High Meme Coin Activity', 'NFT Volume Increasing', 'DeFi TVL Growth']
-  });
+  // Reddit
+  console.log('  🔹 Reddit community...');
+  const reddit = await getRedditSignals();
+  if (reddit.length > 0) {
+    signals.push({
+      source: 'Reddit',
+      type: 'Community Discussion',
+      data: reddit.slice(0, 5)
+    });
+  }
+  
+  // News
+  console.log('  🔹 Crypto news...');
+  const news = await getNewsSignals();
+  if (news.length > 0) {
+    signals.push({
+      source: 'News',
+      type: 'Media Coverage',
+      data: news.slice(0, 5).map(n => `${n.title.slice(0, 60)}... - ${n.source}`)
+    });
+  }
+  
+  // DeFi TVL
+  console.log('  🔹 DeFi TVL...');
+  const tvl = await getDeFiTVL();
+  if (tvl.length > 0) {
+    signals.push({
+      source: 'DeFiLlama',
+      type: 'On-chain TVL',
+      data: tvl.slice(0, 5)
+    });
+  }
+  
+  // CoinGecko trending
+  console.log('  🔹 Trending coins...\n');
+  const trending = await getTrendingCoins();
+  if (trending.length > 0) {
+    signals.push({
+      source: 'CoinGecko',
+      type: 'Market Trends',
+      data: trending.slice(0, 5).map(c => `${c.name} (${c.symbol}) - Rank #${c.market_cap_rank}`)
+    });
+  }
   
   return signals;
 }
@@ -87,74 +197,91 @@ async function getEcosystemSignals() {
 function detectNarratives(signals) {
   const narratives = [];
   
-  // Analyze GitHub activity
-  const githubSignal = signals.find(s => s.source === 'GitHub');
-  if (githubSignal) {
-    const repoNames = githubSignal.data.join(' ').toLowerCase();
-    
-    if (repoNames.includes('agent') || repoNames.includes('ai')) {
-      narratives.push({
-        narrative: 'AI Agents on Solana',
-        confidence: 'High',
-        evidence: 'Multiple AI agent projects gaining traction on GitHub',
-        timeframe: 'Emerging'
-      });
-    }
-    
-    if (repoNames.includes('nft')) {
-      narratives.push({
-        narrative: 'NFT Innovation',
-        confidence: 'Medium',
-        evidence: 'NFT-related projects trending',
-        timeframe: 'Growing'
-      });
-    }
-    
-    if (repoNames.includes('defi') || repoNames.includes('dex')) {
-      narratives.push({
-        narrative: 'DeFi Protocol Development',
-        confidence: 'Medium',
-        evidence: 'DeFi projects gaining developer interest',
-        timeframe: 'Steady'
-      });
-    }
-  }
+  // Analyze all signals for patterns
+  const allText = signals.map(s => s.data.join(' ')).join(' ').toLowerCase();
   
-  // On-chain narratives
-  const onchainSignal = signals.find(s => s.source === 'On-chain');
-  if (onchainSignal) {
-    onchainSignal.data.forEach(item => {
-      if (item.includes('Meme')) {
-        narratives.push({
-          narrative: 'Meme Coin Infrastructure',
-          confidence: 'High',
-          evidence: 'High meme coin activity on-chain',
-          timeframe: 'Peak'
-        });
-      }
+  // AI Agents
+  if (allText.includes('agent') || allText.includes('ai') || allText.includes('autonom')) {
+    narratives.push({
+      narrative: 'AI Agents on Solana',
+      confidence: 'High',
+      evidence: 'Multiple sources showing AI agent projects gaining traction',
+      timeframe: 'Emerging',
+      keywords: ['agent', 'ai', 'autonomous', 'gpt']
     });
   }
   
-  // Default narratives if not enough data
-  if (narratives.length === 0) {
+  // Meme Coins
+  if (allText.includes('meme') || allText.includes('pepe') || allText.includes('dog') || allText.includes('frog')) {
+    narratives.push({
+      narrative: 'Meme Coin Infrastructure',
+      confidence: 'High',
+      evidence: 'High meme coin activity and discussion across sources',
+      timeframe: 'Peak',
+      keywords: ['meme', 'pepe', 'dog', 'frog', 'coin']
+    });
+  }
+  
+  // DeFi
+  if (allText.includes('defi') || allText.includes('dex') || allText.includes('swap') || allText.includes('amm')) {
+    narratives.push({
+      narrative: 'DeFi Protocol Development',
+      confidence: 'Medium',
+      evidence: 'DeFi projects and TVL activity on Solana',
+      timeframe: 'Growing',
+      keywords: ['defi', 'dex', 'swap', 'lending']
+    });
+  }
+  
+  // NFTs
+  if (allText.includes('nft') || allText.includes('collection') || allText.includes('mint')) {
+    narratives.push({
+      narrative: 'NFT Innovation',
+      confidence: 'Medium',
+      evidence: 'NFT projects trending on GitHub and discussions on Reddit',
+      timeframe: 'Steady',
+      keywords: ['nft', 'collection', 'mint', 'cNFT']
+    });
+  }
+  
+  // Gaming
+  if (allText.includes('game') || allText.includes('gaming') || allText.includes('play-to-earn')) {
+    narratives.push({
+      narrative: 'On-chain Gaming',
+      confidence: 'Medium',
+      evidence: 'Gaming projects gaining developer interest',
+      timeframe: 'Growing',
+      keywords: ['game', 'gaming', 'gamer']
+    });
+  }
+  
+  // Infrastructure
+  if (allText.includes('infrastructure') || allText.includes('tooling') || allText.includes('sdk')) {
+    narratives.push({
+      narrative: 'Developer Infrastructure',
+      confidence: 'Medium',
+      evidence: 'Tooling and infrastructure projects trending',
+      timeframe: 'Ongoing',
+      keywords: ['sdk', 'tooling', 'infrastructure']
+    });
+  }
+  
+  // Default narratives if not enough detected
+  if (narratives.length < 2) {
     narratives.push(
       {
-        narrative: 'AI Agent Tooling',
-        confidence: 'High',
-        evidence: 'Growing interest in AI agents across crypto ecosystem',
-        timeframe: 'Emerging'
+        narrative: 'Simplified UX Tools',
+        confidence: 'Medium',
+        evidence: 'Ongoing need for better user experience in crypto',
+        timeframe: 'Ongoing',
+        keywords: ['ux', 'ui', 'simple', 'easy']
       },
       {
-        narrative: 'Simplified DeFi UX',
-        confidence: 'Medium',
-        evidence: 'User experience remains pain point in DeFi',
-        timeframe: 'Ongoing'
-      },
-      {
-        narrative: 'On-chain Gaming',
-        confidence: 'Medium',
-        evidence: 'Gaming projects continuing to build on Solana',
-        timeframe: 'Steady'
+        narrative: 'Mobile-First Solutions',
+        confidence: 'Low',
+        evidence: 'Growing mobile crypto usage',
+        timeframe: 'Growing',
+        keywords: ['mobile', 'ios', 'android', 'app']
       }
     );
   }
@@ -168,168 +295,153 @@ function detectNarratives(signals) {
 function generateBuildIdeas(narratives) {
   const ideas = [];
   
+  const ideaTemplates = {
+    'AI Agents on Solana': [
+      { idea: 'AI Agent SDK', description: 'Developer SDK for building AI agents on Solana', market: 'Developers', difficulty: 'Medium' },
+      { idea: 'Agent Marketplace', description: ' marketplace to hire AI agents for on-chain tasks', market: 'Traders', difficulty: 'High' },
+      { idea: 'Agent Analytics', description: 'Analytics dashboard for AI agent performance', market: 'Agent operators', difficulty: 'Low' }
+    ],
+    'Meme Coin Infrastructure': [
+      { idea: 'Meme Coin Scanner', description: 'Real-time scanner for new meme coin launches', market: 'Traders', difficulty: 'Medium' },
+      { idea: 'Meme Portfolio Tracker', description: 'Portfolio management for meme coin traders', market: 'Meme traders', difficulty: 'Low' }
+    ],
+    'DeFi Protocol Development': [
+      { idea: 'DeFi Aggregator', description: 'One-click DeFi strategy executor', market: 'DeFi users', difficulty: 'Medium' },
+      { idea: 'Yield Optimizer', description: 'Automated yield farming optimizer', market: 'Yield farmers', difficulty: 'High' }
+    ],
+    'NFT Innovation': [
+      { idea: 'NFT Floor Tracker', description: 'Real-time floor price tracking for collections', market: 'NFT traders', difficulty: 'Low' },
+      { idea: 'NFT Lending', description: 'Collateralized NFT lending platform', market: 'NFT holders', difficulty: 'High' }
+    ],
+    'On-chain Gaming': [
+      { idea: 'Game Asset Marketplace', description: 'Cross-game asset trading', market: 'Gamers', difficulty: 'Medium' }
+    ],
+    'Developer Infrastructure': [
+      { idea: 'Solana CLI Tools', description: 'Enhanced command-line tools for developers', market: 'Devs', difficulty: 'Low' },
+      { idea: 'Testing Framework', description: 'Comprehensive testing framework for Solana programs', market: 'Devs', difficulty: 'Medium' }
+    ],
+    'Simplified UX Tools': [
+      { idea: 'No-Code Builder', description: 'Drag-and-drop interface for Solana dApps', market: 'Non-devs', difficulty: 'High' }
+    ],
+    'Mobile-First Solutions': [
+      { idea: 'Mobile Wallet', description: 'Simplified mobile wallet with social features', market: 'Mobile users', difficulty: 'Medium' }
+    ]
+  };
+  
   narratives.forEach(n => {
-    switch (n.narrative) {
-      case 'AI Agents on Solana':
-        ideas.push(
-          {
-            idea: 'Agent SDK for Solana',
-            description: 'A software development kit that makes it easy for AI agents to interact with Solana programs',
-            narrative: 'AI Agents on Solana',
-            difficulty: 'Medium',
-            market: 'Developers building AI agents'
-          },
-          {
-            idea: 'Agent Marketplace',
-            description: 'A marketplace where users can hire AI agents for on-chain tasks (trading, staking, governance)',
-            narrative: 'AI Agents on Solana',
-            difficulty: 'High',
-            market: 'Crypto-native users wanting automation'
-          }
-        );
-        break;
-        
-      case 'Meme Coin Infrastructure':
-        ideas.push(
-          {
-            idea: 'Meme Coin Scanner',
-            description: 'Real-time scanner for new meme coin launches with analytics on holder distribution and liquidity',
-            narrative: 'Meme Coin Infrastructure',
-            difficulty: 'Medium',
-            market: 'Traders looking for early opportunities'
-          },
-          {
-            idea: 'Meme Coin Portfolio Tracker',
-            description: 'Portfolio management tool specifically for meme coin traders with P&L and tax features',
-            narrative: 'Meme Coin Infrastructure',
-            difficulty: 'Low',
-            market: 'Meme coin traders'
-          }
-        );
-        break;
-        
-      case 'Simplified DeFi UX':
-        ideas.push(
-          {
-            idea: 'One-Click DeFi Aggregator',
-            description: 'Simplified interface that lets users execute complex DeFi strategies with one click',
-            narrative: 'Simplified DeFi UX',
-            difficulty: 'Medium',
-            market: 'New DeFi users'
-          },
-          {
-            idea: 'DeFi Strategy Templates',
-            description: 'Pre-built strategy templates for common DeFi operations (yield farming, staking, lending)',
-            narrative: 'Simplified DeFi UX',
-            difficulty: 'Low',
-            market: 'DeFi beginners'
-          }
-        );
-        break;
-        
-      case 'On-chain Gaming':
-        ideas.push(
-          {
-            idea: 'Game Asset Marketplace',
-            description: 'Marketplace for trading in-game assets across multiple Solana games',
-            narrative: 'On-chain Gaming',
-            difficulty: 'Medium',
-            market: 'Solana gamers'
-          }
-        );
-        break;
-        
-      default:
+    const templates = ideaTemplates[n.narrative] || [];
+    templates.forEach(t => {
+      if (ideas.length < 5) {
         ideas.push({
-          idea: `${n.narrative} Dashboard`,
-          description: `Analytics dashboard for ${n.narrative} on Solana`,
+          idea: t.idea,
+          description: t.description,
           narrative: n.narrative,
-          difficulty: 'Low',
-          market: 'General users'
+          targetMarket: t.market,
+          difficulty: t.difficulty
         });
-    }
+      }
+    });
   });
   
   // Ensure we have at least 3 ideas
-  if (ideas.length < 3) {
-    ideas.push(
-      {
-        idea: 'Solana Wallet Analyzer',
-        description: 'Tool to analyze wallet behavior and generate insights',
-        narrative: 'General',
-        difficulty: 'Low',
-        market: 'Traders and investors'
-      },
-      {
-        idea: 'Solana Event Tracker',
-        description: 'Calendar and notifications for Solana ecosystem events (airdrops, launches, governance)',
-        narrative: 'General',
-        difficulty: 'Low',
-        market: 'Active Solana users'
-      }
-    );
+  while (ideas.length < 3) {
+    ideas.push({
+      idea: 'Solana Dashboard',
+      description: 'General analytics dashboard for Solana activity',
+      narrative: 'General',
+      targetMarket: 'All users',
+      difficulty: 'Low'
+    });
   }
   
   return ideas.slice(0, 5);
 }
 
 /**
+ * Save report to file
+ */
+function saveReport(result) {
+  const filename = `narrative-report-${new Date().toISOString().split('T')[0]}.json`;
+  fs.writeFileSync(filename, JSON.stringify(result, null, 2));
+  console.log(`\n📁 Report saved to: ${filename}`);
+  return filename;
+}
+
+/**
  * Main function to run narrative detection
  */
-async function detectAndGenerate() {
+async function detectAndGenerate(options = {}) {
+  const { verbose = false, save = false } = options;
+  
   console.log('🔍 Solana Narrative Detector');
   console.log('============================\n');
   
-  console.log('📡 Fetching ecosystem signals...');
   const signals = await getEcosystemSignals();
   
-  console.log(`Found ${signals.length} signal sources\n`);
+  console.log(`\n📊 Found signals from ${signals.length} sources\n`);
+  
+  if (verbose) {
+    signals.forEach(s => {
+      console.log(`[${s.source}] ${s.type}:`);
+      s.data.slice(0, 3).forEach(d => console.log(`   - ${d}`));
+      console.log('');
+    });
+  }
   
   console.log('🎯 Detecting narratives...');
   const narratives = detectNarratives(signals);
-  
-  console.log(`Detected ${narratives.length} narratives\n`);
+  console.log(`   Found ${narratives.length} narratives\n`);
   
   console.log('💡 Generating build ideas...');
   const ideas = generateBuildIdeas(narratives);
-  
-  console.log(`Generated ${ideas.length} build ideas\n`);
+  console.log(`   Generated ${ideas.length} ideas\n`);
   
   const result = {
     timestamp: new Date().toISOString(),
-    signals,
+    signals: signals.length,
     narratives,
     buildIdeas: ideas,
     summary: {
-      totalSignals: signals.length,
-      totalNarratives: narratives.length,
-      totalIdeas: ideas.length
+      sourcesAnalyzed: signals.length,
+      narrativesDetected: narratives.length,
+      ideasGenerated: ideas.length
     }
   };
   
   console.log('📊 Summary:');
   console.log(JSON.stringify(result.summary, null, 2));
   
+  if (save) {
+    saveReport(result);
+  }
+  
   return result;
 }
 
-// Run if executed directly
+// CLI mode
 if (require.main === module) {
-  detectAndGenerate()
+  const args = process.argv.slice(2);
+  const options = {
+    verbose: args.includes('--verbose') || args.includes('-v'),
+    save: args.includes('--save') || args.includes('-s')
+  };
+  
+  detectAndGenerate(options)
     .then(result => {
-      console.log('\n✅ Analysis complete!');
-      console.log('\n📋 NARRATIVES DETECTED:');
+      console.log('\n✅ Analysis complete!\n');
+      
+      console.log('📋 NARRATIVES DETECTED:');
       result.narratives.forEach((n, i) => {
         console.log(`\n${i + 1}. ${n.narrative}`);
         console.log(`   Confidence: ${n.confidence}`);
         console.log(`   Evidence: ${n.evidence}`);
       });
       
-      console.log('\n💡 BUILD IDEAS:');
-      result.buildIdeas.forEach((idea, i) => {
+      console.log('\n💡 TOP BUILD IDEAS:');
+      result.buildIdeas.slice(0, 3).forEach((idea, i) => {
         console.log(`\n${i + 1}. ${idea.idea}`);
         console.log(`   ${idea.description}`);
-        console.log(`   For: ${idea.market}`);
+        console.log(`   Target: ${idea.targetMarket} | Difficulty: ${idea.difficulty}`);
       });
     })
     .catch(console.error);

@@ -4,20 +4,22 @@
 
 ## Overview
 
-This tool monitors signals from on-chain activity, developer activity (GitHub), and social media to identify emerging narratives in the Solana ecosystem. It then generates 3-5 concrete build ideas for each detected narrative.
+This tool monitors signals from multiple sources to identify emerging narratives in the Solana ecosystem, then generates 3-5 concrete build ideas for each detected narrative.
 
 Built for the **Superteam Earn Narrative Detection Bounty**.
 
 ## What It Does
 
-1. **Monitors Ecosystem Signals**
-   - On-chain activity (program usage, wallet behavior)
-   - Developer activity (GitHub repos, commits, stars)
-   - Social signals
+1. **Monitors Multiple Signals**
+   - GitHub trending repositories
+   - Reddit community discussions
+   - Crypto news (CryptoCompare)
+   - DeFi TVL (DeFiLlama)
+   - Trending coins (CoinGecko)
 
 2. **Detects Emerging Narratives**
    - Identifies narratives gaining traction
-   - Ranks by confidence and novelty
+   - Ranks by confidence
    - Provides evidence for each detection
 
 3. **Generates Build Ideas**
@@ -30,95 +32,92 @@ Built for the **Superteam Earn Narrative Detection Bounty**.
 ```bash
 git clone https://github.com/Seenfinity/solana-narrative-detector.git
 cd solana-narrative-detector
+npm install  # Not required - uses built-in modules
 node narrative-detector.js
 ```
 
-## Output
+## Usage
 
-The tool outputs:
+```bash
+# Basic run
+node narrative-detector.js
 
-```json
-{
-  "timestamp": "2026-02-15T...",
-  "signals": [...],
-  "narratives": [
-    {
-      "narrative": "AI Agents on Solana",
-      "confidence": "High",
-      "evidence": "Multiple AI agent projects gaining traction",
-      "timeframe": "Emerging"
-    }
-  ],
-  "buildIdeas": [
-    {
-      "idea": "Agent SDK for Solana",
-      "description": "SDK for AI agents to interact with Solana",
-      "narrative": "AI Agents on Solana",
-      "difficulty": "Medium",
-      "market": "Developers building AI agents"
-    }
-  ]
-}
+# Verbose mode (shows all signals)
+node narrative-detector.js --verbose
+
+# Save report to file
+node narrative-detector.js --save
 ```
-
-## Detected Narratives (Sample)
-
-### 1. AI Agents on Solana
-- **Confidence:** High
-- **Evidence:** Multiple AI agent projects gaining traction on GitHub
-- **Timeframe:** Emerging
-
-**Build Ideas:**
-- Agent SDK for Solana
-- Agent Marketplace
-
-### 2. Meme Coin Infrastructure  
-- **Confidence:** High
-- **Evidence:** High meme coin activity on-chain
-- **Timeframe:** Peak
-
-**Build Ideas:**
-- Meme Coin Scanner
-- Meme Coin Portfolio Tracker
-
-### 3. Simplified DeFi UX
-- **Confidence:** Medium
-- **Evidence:** User experience remains pain point in DeFi
-- **Timeframe:** Ongoing
-
-**Build Ideas:**
-- One-Click DeFi Aggregator
-- DeFi Strategy Templates
 
 ## Data Sources
 
-- **GitHub:** Trending Solana repositories
-- **On-chain:** Activity patterns (via RPC)
-- **Social:** Community signals
+| Source | Type | Description |
+|--------|------|-------------|
+| GitHub | Developer Activity | Trending Solana repos |
+| Reddit | Community | r/solana new posts |
+| CryptoCompare | News | Latest crypto news |
+| DeFiLlama | On-chain | TVL by protocol |
+| CoinGecko | Market | Trending coins |
 
-## How It Works
+## Sample Output
 
 ```
-Signals → Analysis → Narratives → Build Ideas
-   ↓          ↓           ↓            ↓
- GitHub    Pattern    Emerging    Products
- On-chain  Detection  Trends      Opportunities
- Social    AI/ML      Ranking     Market Fit
+🔍 Solana Narrative Detector
+📡 Fetching signals from multiple sources...
+📊 Found signals from 5 sources
+
+🎯 Detecting narratives...
+   Found 2 narratives
+
+💡 Generating build ideas...
+   Generated 5 ideas
+
+📋 NARRATIVES DETECTED:
+
+1. AI Agents on Solana
+   Confidence: High
+   Evidence: Multiple sources showing AI agent projects gaining traction
+
+2. DeFi Protocol Development
+   Confidence: Medium
+   Evidence: DeFi projects and TVL activity on Solana
+
+💡 TOP BUILD IDEAS:
+
+1. AI Agent SDK
+   Developer SDK for building AI agents on Solana
+   Target: Developers | Difficulty: Medium
 ```
+
+## Detected Narratives
+
+The tool detects narratives including:
+
+- **AI Agents on Solana** - Agent SDKs, marketplaces, analytics
+- **Meme Coin Infrastructure** - Scanners, portfolio trackers
+- **DeFi Protocol Development** - Aggregators, yield optimizers
+- **NFT Innovation** - Floor trackers, lending
+- **On-chain Gaming** - Game asset marketplaces
+- **Developer Infrastructure** - SDKs, testing frameworks
+- **Simplified UX Tools** - No-code builders
+
+## API Sources Used
+
+- GitHub REST API (public)
+- Reddit JSON API (public)
+- CryptoCompare News API (free tier)
+- DeFiLlama API (public)
+- CoinGecko API (free tier)
+
+No API keys required for basic usage.
 
 ## Future Enhancements
 
-- Add Twitter/X API for real-time social signals
-- Integrate Helius/GenesysGo for on-chain data
-- Add sentiment analysis
+- Twitter/X API integration
+- Discord signals
 - Historical trend tracking
-- Automated report generation
-
-## Tech Stack
-
-- JavaScript/Node.js
-- GitHub API
-- Solana RPC (Helius)
+- Automated weekly reports
+- Web dashboard
 
 ## License
 
